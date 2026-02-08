@@ -1,5 +1,5 @@
 import { User } from "../modules/user.module.js";
-import bcrypt from "bcryptjs"; // 'haspassword' ki jagah standard 'bcrypt' naam use karein
+import bcrypt from "bcryptjs"; 
 import { generateToken } from "../utils/generatedToken.js";
 import dotenv from "dotenv";
 import jwt from "jsonwebtoken";
@@ -84,13 +84,11 @@ export const userDetails = async (req, res) => {
 
        
 
-        // 2. User ko find karein
-        // Note: populate tabhi kaam karta hai jab 'orders' collection exist karti ho
         const user = await User.findById(currentUserId)
             .select("-password") 
             .populate({
                 path: 'orders',
-                strictPopulate: false // 👈 Ise add karein taaki agar collection na ho toh crash na ho
+                strictPopulate: false 
             }); 
 
         if (!user) {
@@ -109,7 +107,6 @@ export const userDetails = async (req, res) => {
         });
 
     } catch (err) {
-        // Asli error terminal mein dekhne ke liye console log zaroori hai
         console.error("Internal Server Error Details:", err);
         
         return res.status(500).json({

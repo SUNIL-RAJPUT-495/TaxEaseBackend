@@ -2,7 +2,6 @@ import jwt from 'jsonwebtoken';
 
 export const authToken = async (req, res, next) => {
     try {
-        // 1. Token nikaalo (Cookie se ya Header se)
         const token = req.cookies?.token || req.header("Authorization")?.replace("Bearer ", "");
 
         if (!token) {
@@ -13,8 +12,6 @@ export const authToken = async (req, res, next) => {
             });
         }
 
-        // 2. Verify Token (❌ ACCESS_TOKEN_SECRET hata kar ✅ JWT_SECRET lagaya)
-        // Kyunki Login controller mein aapne JWT_SECRET use kiya tha
         const decode = jwt.verify(token, process.env.JWT_SECRET);
         console.log("Decoded Token Data:", decode);
 
@@ -26,8 +23,6 @@ export const authToken = async (req, res, next) => {
             });
         }
 
-        // 3. Set User ID (❌ req.user hata kar ✅ req.userId lagaya)
-        // Kyunki controller 'req.userId' dhoond raha hai
         req.userId = decode?._id || decode?.id;
         
         next();

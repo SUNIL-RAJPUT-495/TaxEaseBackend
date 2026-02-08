@@ -1,7 +1,6 @@
 import multer from "multer";
 import path from "path";
 
-// Storage Engine
 const storage = multer.diskStorage({
   destination: "./uploads/",
   filename: function (req, file, cb) {
@@ -9,7 +8,6 @@ const storage = multer.diskStorage({
   },
 });
 
-// Check File Type (PDF, Images allowed)
 const fileFilter = (req, file, cb) => {
   const filetypes = /jpeg|jpg|png|pdf/;
   const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
@@ -24,7 +22,7 @@ const fileFilter = (req, file, cb) => {
 
 const upload = multer({
   storage: storage,
-  limits: { fileSize: 5000000 }, // 5MB limit
+  limits: { fileSize: 5000000 }, 
   fileFilter: fileFilter
 });
 

@@ -136,10 +136,6 @@ export const verifyPayment = async (req, res) => {
 
 export const getAllOrders = async (req, res) => {
     try {
-        // 1. Find All Orders
-        // 2. .populate("userId") -> User ka data (Name, Email, Phone) layega
-        // 3. .sort({ createdAt: -1 }) -> Latest order sabse upar
-        
         const orders = await Order.find()
             .populate("userId", "name email phone") 
             .sort({ createdAt: -1 });
