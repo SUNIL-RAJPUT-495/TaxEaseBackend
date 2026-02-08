@@ -62,9 +62,7 @@ connectDB().then(async () => {
             
         }
 
-        app.listen(PORT, () => {
-            console.log(`🚀 Server running on port ${PORT}`);
-        });
+       
     } catch (error) {
         console.error("Error during index cleanup:", error);
     }
