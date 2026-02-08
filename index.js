@@ -20,7 +20,7 @@ app.use(express.json());
 app.use(cookieParser());
 app.use(morgan('dev'));
 
-const allowedOrigins = [
+const allowedOrigins = ["https://tax-ease-client.vercel.app",
     "http://localhost:5173", 
     process.env.FRONTEND_URL?.replace(/\/$/, "")
 ].filter(Boolean);
