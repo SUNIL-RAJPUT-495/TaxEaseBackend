@@ -1,6 +1,6 @@
 import express from 'express';
 import dotenv from 'dotenv';
-import connectDB from '../backend/config/db.js';
+import connectDB from './config/db.js';
 import morgan from 'morgan'; 
 import cors from 'cors';  
 import cookieParser from 'cookie-parser';
@@ -38,13 +38,10 @@ app.use(cors({
     allowedHeaders: ["Content-Type", "Authorization", "Cookie"]
 }));
 
-// --- Database Connection Middleware (For Serverless) ---
-// Vercel par har request se pehle check karna zaroori hai ki DB connected hai ya nahi
 const connectToDatabase = async () => {
     if (mongoose.connection.readyState >= 1) return;
     await connectDB();
     
-    // Index cleanup logic (Only runs once when DB connects)
     try {
         const adminDb = mongoose.connection.db;
         const collections = await adminDb.listCollections({ name: 'users' }).toArray();
@@ -56,7 +53,6 @@ const connectToDatabase = async () => {
     }
 };
 
-// Middleware to ensure DB connection
 app.use(async (req, res, next) => {
     await connectToDatabase();
     next();
@@ -72,8 +68,6 @@ app.use("/api/plans", planrouter);
 app.use("/api/payment", payamentRouter);
 app.use("/api/file", uploadRouter);
 
-// ✅ Vercel doesn't need app.listen. It handles the port itself.
-// Local development ke liye ye zaroori hai:
 if (process.env.NODE_ENV !== 'production') {
     const PORT = process.env.PORT || 8080;
     app.listen(PORT, () => {
