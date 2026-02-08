@@ -1,15 +1,21 @@
 import { User } from "../modules/user.module.js";
-import haspassword from "bcryptjs";
-import {generateToken} from "../utils/generatedToken.js"
+import bcrypt from "bcryptjs"; // 'haspassword' ki jagah standard 'bcrypt' naam use karein
+import { generateToken } from "../utils/generatedToken.js";
+import dotenv from "dotenv";
+import jwt from "jsonwebtoken";
+import mongoose from 'mongoose';
 
+dotenv.config();
+
+// --- 1. CREATE USER ---
 export const creatUser = async (req, res) => {
     try {
-        const { name, email, phone, password,role } = req.body;
-        console.log("Received user data:", { name, email, phone, role });
+        const { name, email, phone, password, role } = req.body;
+        
         if (!name || !email || !phone || !password || !role) {
             return res.status(400).json({ 
-                message: "All fields are required" ,
-                error: true ,
+                message: "All fields are required",
+                error: true,
                 success: false
             });
         }
@@ -17,95 +23,119 @@ export const creatUser = async (req, res) => {
         const existingUser = await User.findOne({ email });
         if (existingUser) {
             return res.status(400).json({ 
-                message: "User with this email already exists" ,
-                error: true ,
+                message: "User with this email already exists",
+                error: true,
                 success: false
             });
         }
-        const hashedPassword = await haspassword.hash(password, 10);
-        const newUser = new User({ name, email, phone, password: hashedPassword ,role});
+
+        const hashedPassword = await bcrypt.hash(password, 10);
+        const newUser = new User({ name, email, phone, password: hashedPassword, role });
         await newUser.save();
+
         res.status(201).json({
              message: "User created successfully", 
-             user: newUser ,
-             success: true ,
+             user: newUser,
+             success: true,
              error: false
-            });
+        });
     } catch (error) {
         console.error("Error creating user:", error);
         res.status(500).json({ message: "Internal server error" });
     }
 };
 
+// --- 2. VERIFY USER (LOGIN) ---
 export const verifyUser = async (req, res) => {
     try {
         const { email, password } = req.body;
-            if (!email || !password) {
-            return res.status(400).json({ 
-                message: "Email and password are required" ,
-                error: true ,
-                success: false
-            });
-        }
-        const user = await User.findOne({ email });
-        if (!user) {
-            return res.status(404).json({ 
-                message: "User not found",
-                error: true ,
-                success: false
-                
-             });
-        }   
-        const isPasswordValid = await haspassword.compare(password, user.password);
-        if (!isPasswordValid) {
-            return res.status(401).json({
-                 message: "Invalid password",
-                    error: true ,
-                    success: false 
-                });
-        }
-
-        const generatedToken = await generateToken(user._id);
-
-         const cookieOption = {
-            httpOnly: true,
-            secure: isProduction,
-            sameSite: isProduction ? 'None' : 'Lax',
-            maxAge: 7 * 24 * 60 * 60 * 1000, 
-            path: "/"
-        };
-        return res
-            .cookie("token", token, cookieOption)
-            .status(200)
-            .json({
-                message: `Welcome back, ${user.fullName}`,
-                success: true,
-                token: token, 
-                data: {
-                    _id: user._id,
-                    fullName: user.fullName,
-                    email: user.email,
-                    role: user.role
-                }
-            });
-
         
+        const user = await User.findOne({ email });
+        if (!user) return res.status(404).json({ message: "Invalid Credentials" });
+
+        const isMatch = await bcrypt.compare(password, user.password);
+        if (!isMatch) return res.status(401).json({ message: "Invalid Credentials" });
+
+        const token = await generateToken(user._id);
+
+        return res.status(200).json({
+            message: `Welcome, ${user.name}`,
+            success: true,
+            token,
+            data: { _id: user._id, role: user.role, name: user.name }
+        });
     } catch (error) {
-        console.error("Error verifying user:", error);
-        res.status(500).json({
-             message: "Internal server error",
-                error: true ,
-                success: false
-             });
-    }   
+        res.status(500).json({ message: "Server Error" });
+    }
 };
 
+// --- 3. USER DETAILS ---
+// --- 3. USER DETAILS ---
+export const userDetails = async (req, res) => {
+    try {
+        const currentUserId = req.userId; 
+        if (!mongoose.Types.ObjectId.isValid(currentUserId)) {
+            return res.status(400).json({
+                message: "Invalid User Session. Please Login again.",
+                error: true,
+                success: false
+            });
+        }
 
-// export const userProfile = async (req, res) => {
-//     try {
-//         const userId = req.params.id;
-//         const user = await User.findById(userId).select("-password");
-//         if (!user) {
-//             return res.status(404).json({ message: "User not found" });
-//         }
+       
 
+        // 2. User ko find karein
+        // Note: populate tabhi kaam karta hai jab 'orders' collection exist karti ho
+        const user = await User.findById(currentUserId)
+            .select("-password") 
+            .populate({
+                path: 'orders',
+                strictPopulate: false // 👈 Ise add karein taaki agar collection na ho toh crash na ho
+            }); 
+
+        if (!user) {
+            return res.status(404).json({
+                message: "User not found in database",
+                error: true,
+                success: false
+            });
+        }
+
+        return res.status(200).json({
+            data: user,
+            error: false,
+            success: true,
+            message: "User details fetched successfully"
+        });
+
+    } catch (err) {
+        // Asli error terminal mein dekhne ke liye console log zaroori hai
+        console.error("Internal Server Error Details:", err);
+        
+        return res.status(500).json({
+            message: err.message || "Something went wrong on the server",
+            error: true,
+            success: false
+        });
+    }
+};
+
+export const getAllUser =async(req,res)=>{
+    try{
+        const allUsers = await User.find().select("-password").sort({ createdAt: -1 });
+
+        res.status(200).json({
+            message: "All Users Fetched Successfully",
+            data: allUsers,
+            success: true,
+            error: false
+        });
+    }
+    catch (err) {
+        res.status(500).json({
+            message: err.message || err,
+            error: true,
+            success: false
+        });
+    }
+}
