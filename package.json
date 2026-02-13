@@ -26,6 +26,7 @@
     "multer": "^2.0.2",
     "multer-storage-cloudinary": "^4.0.0",
     "nodemon": "^3.1.11",
+    "pusher": "^5.3.2",
     "razorpay": "^2.9.6"
   }
 }

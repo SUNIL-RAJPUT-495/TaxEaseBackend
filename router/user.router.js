@@ -10,4 +10,5 @@ userrouter.post("/verify-user",verifyUser)
 userrouter.get("/get-userDetails",authToken,userDetails)
 userrouter.get("/all-users", authToken, getAllUser)
 
+
 export default userrouter;

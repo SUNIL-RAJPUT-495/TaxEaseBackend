@@ -1,5 +1,6 @@
 import express from 'express';
 import dotenv from 'dotenv';
+dotenv.config();
 import connectDB from './config/db.js';
 import morgan from 'morgan'; 
 import cors from 'cors';  
@@ -11,8 +12,8 @@ import userrouter from './router/user.router.js';
 import planrouter from './router/plan.router.js';
 import payamentRouter from './router/payment.route.js';
 import uploadRouter from './router/upload.routes.js';
+import chatRouter from './router/chat.router.js';
 
-dotenv.config();
 const app = express();
 
 // --- Middlewares ---
@@ -67,6 +68,7 @@ app.use("/api/user", userrouter);
 app.use("/api/plans", planrouter);
 app.use("/api/payment", payamentRouter);
 app.use("/api/file", uploadRouter);
+app.use("/api/chat",chatRouter)
 
 if (process.env.NODE_ENV !== 'production') {
     const PORT = process.env.PORT || 8080;
