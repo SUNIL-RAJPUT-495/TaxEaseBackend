@@ -32,7 +32,11 @@ const orderSchema = new mongoose.Schema({
     type: String, 
     required: true },
   paymentId: { 
-    type: String },              
+    type: String },  
+    isSeen: {
+        type: Boolean,
+        default: false 
+    },            
   status: { 
     type: String, 
     enum: ["created", "paid", "failed"], 

@@ -1,6 +1,7 @@
 import { Conversation, Message } from "../modules/chat.model.js";
 import { User } from "../modules/user.module.js";
 import { pusher } from "../utils/pusher.js";
+import mongoose from "mongoose"; // ⚠️ YE IMPORT SABSE ZAROORI HAI
 
 // Helper: Admin ki ID nikalne ke liye
 const getAdminId = async () => {
@@ -12,32 +13,35 @@ const getAdminId = async () => {
 export const sendMessage = async (req, res) => {
     try {
         const { message, receiver } = req.body;
-        const senderId = req.userId; // Jo login hai
+        const senderId = req.userId.toString(); // Jo login hai
 
         const ADMIN_ID = await getAdminId();
-        const isSenderAdmin = senderId.toString() === ADMIN_ID;
+        const isSenderAdmin = senderId === ADMIN_ID;
         
         // Agar sender Admin hai, toh receiver User hoga. Warna hamesha Admin hoga.
         const receiverId = isSenderAdmin ? receiver : ADMIN_ID;
 
         if (!receiverId) return res.status(400).json({ success: false, message: "Receiver not found" });
 
-        // 🧠 JADU 1: Check karo kya in dono ke beech pehle se koi chat room (conversation) hai?
+        // 🔥 JADU FIX 1: ID ko Mongoose ObjectId banayein taaki duplicate rooms na banein!
+        const senderObjId = new mongoose.Types.ObjectId(senderId);
+        const receiverObjId = new mongoose.Types.ObjectId(receiverId);
+
         let conversation = await Conversation.findOne({
-            participants: { $all: [senderId, receiverId] }
+            participants: { $all: [senderObjId, receiverObjId] }
         });
 
         // Agar nahi hai, toh naya Chat Room bana do
         if (!conversation) {
             conversation = await Conversation.create({
-                participants: [senderId, receiverId]
+                participants: [senderObjId, receiverObjId]
             });
         }
 
-        // 🧠 JADU 2: Naya message database mein daalo
+        // Naya message database mein daalo
         const newMessage = await Message.create({
             conversationId: conversation._id,
-            sender: senderId,
+            sender: senderObjId,
             message: message.trim()
         });
 
@@ -45,10 +49,14 @@ export const sendMessage = async (req, res) => {
         conversation.lastMessage = message.trim();
         await conversation.save();
 
-        // Real-time update via Pusher
-        await pusher.trigger("chat-channel", "new-message", { message: newMessage });
+        // 🔥 JADU FIX 2: React (Frontend) ko khush rakhne ke liye 'receiver' chipka do!
+        const messageData = newMessage.toObject(); // Message ko plain object banaya
+        messageData.receiver = receiverId;         // Ab Frontend Pusher ise reject nahi karega!
 
-        res.status(200).json({ success: true, data: newMessage });
+        // Real-time update via Pusher
+        await pusher.trigger("chat-channel", "new-message", { message: messageData });
+
+        res.status(200).json({ success: true, data: messageData });
     } catch (error) {
         console.error("Send Message Error:", error);
         res.status(500).json({ success: false, message: error.message });
@@ -58,20 +66,16 @@ export const sendMessage = async (req, res) => {
 // --- 2. GET CHAT USERS (Admin Inbox List) ---
 export const getChatUsers = async (req, res) => {
     try {
-        const loggedInUserId = req.userId;
+        const loggedInUserId = req.userId.toString();
 
-        // 🧠 JADU 3: Direct wo saari conversations utha lo jisme main shamil hu
-        // Aur .populate() se apne aap doosre bande ka naam aur email le aao!
         const conversations = await Conversation.find({
             participants: { $in: [loggedInUserId] }
         })
-        .populate("participants", "name email") // Yeh line automatically Users table se data utha layegi
+        .populate("participants", "name email") 
         .sort({ updatedAt: -1 });
 
-        // Data ko saaf karke bhej do
         const finalData = conversations.map(conv => {
-            // Un 2 logo mein se wo banda nikalo jo main NAHI hu
-            const otherUser = conv.participants.find(p => p._id.toString() !== loggedInUserId.toString());
+            const otherUser = conv.participants.find(p => p._id.toString() !== loggedInUserId);
 
             return {
                 conversationId: conv._id,
@@ -93,28 +97,34 @@ export const getChatUsers = async (req, res) => {
 // --- 3. GET CHAT HISTORY ---
 export const getUserChatHistory = async (req, res) => {
     try {
-        const { userId } = req.params; // Jiske sath chat dekhni hai
-        const loggedInUserId = req.userId;
+        const { userId } = req.params; 
+        const loggedInUserId = req.userId.toString();
 
         const ADMIN_ID = await getAdminId();
-        const isMeAdmin = loggedInUserId.toString() === ADMIN_ID;
+        const isMeAdmin = loggedInUserId === ADMIN_ID;
         const targetUserId = isMeAdmin ? userId : ADMIN_ID;
 
-        // Pehle wo chat room dhoondo
+        const loggedInObjId = new mongoose.Types.ObjectId(loggedInUserId);
+        const targetObjId = new mongoose.Types.ObjectId(targetUserId);
+
         const conversation = await Conversation.findOne({
-            participants: { $all: [loggedInUserId, targetUserId] }
+            participants: { $all: [loggedInObjId, targetObjId] }
         });
 
         if (!conversation) {
-            return res.status(200).json({ success: true, data: [] }); // Abhi tak koi chat nahi hui
+            return res.status(200).json({ success: true, data: [] }); 
         }
 
-        // Us chat room ke saare messages nikal lo
         const messages = await Message.find({
             conversationId: conversation._id
-        }).sort({ createdAt: 1 });
+        }).sort({ createdAt: 1 }).lean(); 
 
-        res.status(200).json({ success: true, data: messages });
+        const messagesWithReceiver = messages.map(msg => ({
+            ...msg,
+            receiver: msg.sender.toString() === loggedInUserId ? targetUserId : loggedInUserId
+        }));
+
+        res.status(200).json({ success: true, data: messagesWithReceiver });
     } catch (error) {
         console.error("History Error:", error);
         res.status(500).json({ success: false, message: error.message });

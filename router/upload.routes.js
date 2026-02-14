@@ -1,6 +1,6 @@
 import { Router } from "express";
 import upload from "../middleware/multer.js";
-import { uploadSingleImage } from "../controller/uploadImage.controller.js";
+import { adminUploadToUser, uploadSingleImage } from "../controller/uploadImage.controller.js";
 import { authToken } from "../middleware/authToken.js";
 
 const uploadRouter = Router();
@@ -10,6 +10,12 @@ uploadRouter.post(
   authToken,          
   upload.single("file"), 
   uploadSingleImage  
+);
+uploadRouter.post(
+  "/upload-admin",
+  authToken,          
+  upload.single("file"), 
+  adminUploadToUser 
 );
 
 

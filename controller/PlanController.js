@@ -1,4 +1,5 @@
 import { Plan } from "../modules/Plan.module.js";
+import { Order } from "../modules/Order.module.js";
 
 export const createPlan = async (req, res) => {
   try {
@@ -65,6 +66,132 @@ export const getPlans = async (req, res) => {
   } catch (error) {
     return res.status(500).json({
       message: error.message,
+      success: false
+    });
+  }
+};
+
+
+export const getAllServices = async (req, res) => {
+  try {
+    // 1. Saare Plans aur saare Paid Orders ek saath fetch karein
+    const [plans, allPaidOrders] = await Promise.all([
+      Plan.find().lean(),
+      Order.find({ status: "paid" }).lean()
+    ]);
+
+    // 2. JavaScript se match karke count nikalna
+    const plansWithCount = plans.map(plan => {
+      // Check karein ki is planName ke kitne orders hain
+      const userCount = allPaidOrders.filter(order => {
+        // 🔥 DEBUGGING: Agar count 0 aa raha hai, to niche wala console log terminal mein check karein
+        // console.log(`Comparing: ${order.planName} with ${plan.planName}`);
+        
+        return String(order.planName).trim().toLowerCase() === String(plan.planName).trim().toLowerCase();
+      }).length;
+
+      return {
+        ...plan,
+        totalUsers: userCount
+      };
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Fetched using Manual Mapping",
+      data: plansWithCount
+    });
+
+  } catch (error) {
+    res.status(500).json({ message: error.message, success: false });
+  }
+};
+
+
+export const editPlan = async (req, res) => {
+  try {
+    const { id, planName, price, description, features, isPopular, isActive, serviceCategory } = req.body;
+
+    if (!id) {
+        return res.status(400).json({
+            message: "Plan ID is required for update",
+            error: true,
+            success: false
+        });
+    }
+
+
+    const updatedPlan = await Plan.findByIdAndUpdate(
+      id, 
+      {
+        planName,
+        price,
+        description,
+        features,
+        isPopular,
+        isActive,
+        serviceCategory
+      },
+      { new: true } 
+    );
+
+    if (!updatedPlan) {
+      return res.status(404).json({
+        message: "Plan not found",
+        error: true,
+        success: false
+      });
+    }
+
+    res.status(200).json({
+      message: "Plan updated successfully!",
+      data: updatedPlan,
+      error: false,
+      success: true
+    });
+
+  } catch (error) {
+    res.status(500).json({ 
+        message: error.message || error, 
+        error: true,
+        success: false 
+    });
+  }
+};
+
+
+export const deletePlan = async (req, res) => {
+  try {
+    const { id } = req.body; 
+
+    if (!id) {
+      return res.status(400).json({
+        message: "Plan ID is required for deletion",
+        error: true,
+        success: false
+      });
+    }
+
+    const deletedPlan = await Plan.findByIdAndDelete(id);
+
+    if (!deletedPlan) {
+      return res.status(404).json({
+        message: "Plan not found",
+        error: true,
+        success: false
+      });
+    }
+
+    res.status(200).json({
+      message: `Plan "${deletedPlan.planName}" deleted successfully!`,
+      error: false,
+      success: true
+    });
+
+  } catch (error) {
+    res.status(500).json({
+      message: error.message || error,
+      error: true,
       success: false
     });
   }

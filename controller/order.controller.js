@@ -133,11 +133,10 @@ export const verifyPayment = async (req, res) => {
 };
 
 
-
 export const getAllOrders = async (req, res) => {
     try {
         const orders = await Order.find()
-            .populate("userId", "name email phone") 
+            .populate("userId", "name email phone documents") 
             .sort({ createdAt: -1 });
 
         res.status(200).json({ 
@@ -153,7 +152,7 @@ export const getAllOrders = async (req, res) => {
             message: error.message || "Internal Server Error"
         });
     }
-}
+};
 
 
 
@@ -215,5 +214,24 @@ export const recentOrders = async (req, res) => {
             error: true,
             success: false
         });
+    }
+};
+
+export const markOrderAsSeen = async (req, res) => {
+    try {
+        const { orderId } = req.body;
+        const updatedOrder = await Order.findByIdAndUpdate(
+            orderId,
+            { isSeen: true },
+            { new: true }
+        );
+
+        res.status(200).json({
+            success: true,
+            message: "Order marked as seen",
+            data: updatedOrder
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
     }
 };

@@ -42,6 +42,16 @@ const userSchema = new mongoose.Schema({
             name: { type: String },   
             url: { type: String },       
             publicId: { type: String },  
+            uploadedBy: { 
+                type: String, 
+                enum: ['USER', 'ADMIN'], 
+                default: 'USER' 
+            }, 
+            status: { 
+                type: String, 
+                enum: ['pending', 'approved', 'rejected'], 
+                default: 'pending' 
+            }, 
             uploadedAt: { type: Date, default: Date.now }
         }
     ]

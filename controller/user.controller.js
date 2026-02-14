@@ -2,8 +2,8 @@ import { User } from "../modules/user.module.js";
 import bcrypt from "bcryptjs"; 
 import { generateToken } from "../utils/generatedToken.js";
 import dotenv from "dotenv";
-import jwt from "jsonwebtoken";
 import mongoose from 'mongoose';
+import { Order } from "../modules/Order.module.js";
 
 dotenv.config();
 
@@ -70,7 +70,6 @@ export const verifyUser = async (req, res) => {
 };
 
 // --- 3. USER DETAILS ---
-// --- 3. USER DETAILS ---
 export const userDetails = async (req, res) => {
     try {
         const currentUserId = req.userId; 
@@ -117,6 +116,8 @@ export const userDetails = async (req, res) => {
     }
 };
 
+
+// --- 4. GET ALL USER
 export const getAllUser =async(req,res)=>{
     try{
         const allUsers = await User.find().select("-password").sort({ createdAt: -1 });
@@ -136,3 +137,52 @@ export const getAllUser =async(req,res)=>{
         });
     }
 }
+
+// --- 5. DELETE ALL USER
+
+export const deleteUser = async (req, res) => {
+    try {
+        const { userId } = req.body; 
+
+        if (!userId) {
+            return res.status(400).json({
+                message: "User ID is required to delete",
+                error: true,
+                success: false
+            });
+        }
+
+        if (userId === req.userId) {
+            return res.status(400).json({
+                message: "Admin cannot delete themselves from the user list",
+                error: true,
+                success: false
+            });
+        }
+
+        await Order.deleteMany({ userId: userId });
+
+        const deletedUser = await User.findByIdAndDelete(userId);
+
+        if (!deletedUser) {
+            return res.status(404).json({
+                message: "User not found in database",
+                error: true,
+                success: false
+            });
+        }
+
+        res.status(200).json({
+            message: "User and all linked orders deleted successfully!",
+            error: false,
+            success: true
+        });
+
+    } catch (err) {
+        res.status(500).json({
+            message: err.message || err,
+            error: true,
+            success: false
+        });
+    }
+};

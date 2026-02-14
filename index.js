@@ -10,7 +10,7 @@ import mongoose from "mongoose";
 // Routers
 import userrouter from './router/user.router.js';
 import planrouter from './router/plan.router.js';
-import payamentRouter from './router/payment.route.js';
+import orderRouter from './router/order.route.js';
 import uploadRouter from './router/upload.routes.js';
 import chatRouter from './router/chat.router.js';
 
@@ -66,7 +66,7 @@ app.get('/', (req, res) => {
 
 app.use("/api/user", userrouter);
 app.use("/api/plans", planrouter);
-app.use("/api/payment", payamentRouter);
+app.use("/api/order", orderRouter);
 app.use("/api/file", uploadRouter);
 app.use("/api/chat",chatRouter)
 

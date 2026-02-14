@@ -1,92 +1,75 @@
 import uploadImageCloudinary from "../utils/uploadImageCloudnery.js";
 import { User } from "../modules/user.module.js";
 
-// ================= SINGLE IMAGE & SAVE TO USER DOCS =================
+// 1. ADMIN UPLOAD LOGIC
+export const adminUploadToUser = async (req, res) => {
+  try {
+    const { userId } = req.body; 
+    const file = req.file;
+
+    if (!file || !userId) {
+      return res.status(400).json({ success: false, message: "File or UserID missing" });
+    }
+
+    const uploaded = await uploadImageCloudinary(file, "TAX/admin_uploads");
+
+    const newDocument = {
+        name: file.originalname, 
+        url: uploaded.secure_url,    
+        publicId: uploaded.public_id, 
+        uploadedBy: "ADMIN", 
+        status: "approved",  
+        uploadedAt: new Date()
+    };
 
 
+    const updatedUser = await User.findByIdAndUpdate(
+        userId,
+        { $push: { documents: newDocument } },
+        { new: true }
+    ).populate("documents");
+
+    res.status(200).json({
+      success: true,
+      message: "Document successfully sent to user!",
+      data: updatedUser 
+    });
+
+  } catch (error) {
+    console.error("Admin Upload Error:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// 2. USER UPLOAD LOGIC 
 export const uploadSingleImage = async (req, res) => {
   try {
     const userId = req.userId; 
+    if (!req.file) return res.status(400).json({ success: false, message: "No image provided" });
 
+    const uploaded = await uploadImageCloudinary(req.file, "TAX/documents");
 
-    if (!req.file) {
-      return res.status(400).json({ 
-        success: false, 
-        message: "No image provided" ,
-        error:true
-      });
-    }
-    
-    if (!userId) {
-      return res.status(401).json({ success: false, message: "Unauthorized: User ID missing" });
-    }
-
-    const folder = req.body.folder || "TAX/documents"; 
-
- 
-    const uploaded = await uploadImageCloudinary(req.file, folder);
-
-  
     const newDocument = {
         name: req.file.originalname, 
         url: uploaded.secure_url,    
         publicId: uploaded.public_id, 
+        uploadedBy: "USER",
+        status: "pending",
         uploadedAt: new Date()
     };
 
     const updatedUser = await User.findByIdAndUpdate(
         userId,
-        { 
-            $push: { documents: newDocument } 
-        },
+        { $push: { documents: newDocument } },
         { new: true }
     );
 
     res.status(201).json({
       success: true,
-      message: "Document Uploaded & Saved Successfully",
-      data: {
-          url: uploaded.secure_url,
-          allDocuments: updatedUser.documents 
-      },
+      message: "Uploaded successfully",
+      data: updatedUser.documents
     });
-
   } catch (error) {
-    console.error("Upload Error:", error);
-    res.status(500).json({
-      success: false,
-      message: error.message || "Internal Server Error",
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
-
-// // ================= MULTIPLE PRODUCT IMAGES =================
-// export const uploadProductImages = async (req, res) => {
-//   try {
-//     const files = req.files || [];
-//     if (files.length === 0) {
-//       return res.status(400).json({
-//         success: false,
-//         message: "No images provided",
-//       });
-//     }
-
-//     const folder = req.body.folder || "blinkit/products";
-
-//     const uploadedImages = await Promise.all(
-//       files.map(file => uploadImageCloudinary(file, folder))
-//     );
-
-//     const urls = uploadedImages.map(img => img.secure_url);
-
-//     res.status(201).json({
-//       success: true,
-//       data: urls, // array of URLs
-//     });
-//   } catch (error) {
-//     res.status(500).json({
-//       success: false,
-//       message: error.message,
-//     });
-//   }
-// };
