@@ -74,18 +74,13 @@ export const getPlans = async (req, res) => {
 
 export const getAllServices = async (req, res) => {
   try {
-    // 1. Saare Plans aur saare Paid Orders ek saath fetch karein
     const [plans, allPaidOrders] = await Promise.all([
       Plan.find().lean(),
       Order.find({ status: "paid" }).lean()
     ]);
 
-    // 2. JavaScript se match karke count nikalna
     const plansWithCount = plans.map(plan => {
-      // Check karein ki is planName ke kitne orders hain
       const userCount = allPaidOrders.filter(order => {
-        // 🔥 DEBUGGING: Agar count 0 aa raha hai, to niche wala console log terminal mein check karein
-        // console.log(`Comparing: ${order.planName} with ${plan.planName}`);
         
         return String(order.planName).trim().toLowerCase() === String(plan.planName).trim().toLowerCase();
       }).length;
@@ -195,4 +190,38 @@ export const deletePlan = async (req, res) => {
       success: false
     });
   }
+};
+
+
+export const getPlanDetails = async (req, res) => {
+    try {
+        const { planId } = req.query;
+
+        if (!planId) {
+            return res.status(400).json({
+                success: false,
+                message: "Plan ID is required"
+            });
+        }
+
+        const plan = await Plan.findById(planId);
+
+        if (!plan) {
+            return res.status(404).json({
+                success: false,
+                message: "Plan not found"
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            data: plan
+        });
+
+    } catch (error) {
+        return res.status(500).json({
+            success: false,
+            message: error.message
+        });
+    }
 };

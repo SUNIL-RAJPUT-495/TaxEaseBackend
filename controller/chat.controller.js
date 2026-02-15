@@ -1,9 +1,9 @@
 import { Conversation, Message } from "../modules/chat.model.js";
 import { User } from "../modules/user.module.js";
 import { pusher } from "../utils/pusher.js";
-import mongoose from "mongoose"; // ⚠️ YE IMPORT SABSE ZAROORI HAI
+import mongoose from "mongoose"; 
 
-// Helper: Admin ki ID nikalne ke liye
+
 const getAdminId = async () => {
     const admin = await User.findOne({ role: "admin" }).lean();
     return admin ? admin._id.toString() : null;
@@ -13,17 +13,15 @@ const getAdminId = async () => {
 export const sendMessage = async (req, res) => {
     try {
         const { message, receiver } = req.body;
-        const senderId = req.userId.toString(); // Jo login hai
+        const senderId = req.userId.toString(); 
 
         const ADMIN_ID = await getAdminId();
         const isSenderAdmin = senderId === ADMIN_ID;
         
-        // Agar sender Admin hai, toh receiver User hoga. Warna hamesha Admin hoga.
         const receiverId = isSenderAdmin ? receiver : ADMIN_ID;
 
         if (!receiverId) return res.status(400).json({ success: false, message: "Receiver not found" });
 
-        // 🔥 JADU FIX 1: ID ko Mongoose ObjectId banayein taaki duplicate rooms na banein!
         const senderObjId = new mongoose.Types.ObjectId(senderId);
         const receiverObjId = new mongoose.Types.ObjectId(receiverId);
 
@@ -31,29 +29,24 @@ export const sendMessage = async (req, res) => {
             participants: { $all: [senderObjId, receiverObjId] }
         });
 
-        // Agar nahi hai, toh naya Chat Room bana do
         if (!conversation) {
             conversation = await Conversation.create({
                 participants: [senderObjId, receiverObjId]
             });
         }
 
-        // Naya message database mein daalo
         const newMessage = await Message.create({
             conversationId: conversation._id,
             sender: senderObjId,
             message: message.trim()
         });
 
-        // Chat Room ka 'lastMessage' update kar do taaki sidebar mein dikhe
         conversation.lastMessage = message.trim();
         await conversation.save();
 
-        // 🔥 JADU FIX 2: React (Frontend) ko khush rakhne ke liye 'receiver' chipka do!
-        const messageData = newMessage.toObject(); // Message ko plain object banaya
-        messageData.receiver = receiverId;         // Ab Frontend Pusher ise reject nahi karega!
+        const messageData = newMessage.toObject(); 
+        messageData.receiver = receiverId;         
 
-        // Real-time update via Pusher
         await pusher.trigger("chat-channel", "new-message", { message: messageData });
 
         res.status(200).json({ success: true, data: messageData });
@@ -95,15 +88,24 @@ export const getChatUsers = async (req, res) => {
 };
 
 // --- 3. GET CHAT HISTORY ---
+// --- 3. GET CHAT HISTORY (Safe & Optimized) ---
 export const getUserChatHistory = async (req, res) => {
     try {
-        const { userId } = req.params; 
+        let { userId } = req.params; // "admin" ya asli ID
         const loggedInUserId = req.userId.toString();
 
         const ADMIN_ID = await getAdminId();
+        if (!ADMIN_ID) return res.status(404).json({ success: false, message: "Admin not found" });
+
+        // 🔥 FIX: Agar userId "admin" string hai, toh use asli ADMIN_ID se badal do
+        if (userId === "admin") {
+            userId = ADMIN_ID;
+        }
+
         const isMeAdmin = loggedInUserId === ADMIN_ID;
         const targetUserId = isMeAdmin ? userId : ADMIN_ID;
 
+        // Ab targetUserId hamesha ek 24-char ID hogi, "admin" nahi
         const loggedInObjId = new mongoose.Types.ObjectId(loggedInUserId);
         const targetObjId = new mongoose.Types.ObjectId(targetUserId);
 
@@ -127,6 +129,6 @@ export const getUserChatHistory = async (req, res) => {
         res.status(200).json({ success: true, data: messagesWithReceiver });
     } catch (error) {
         console.error("History Error:", error);
-        res.status(500).json({ success: false, message: error.message });
+        res.status(500).json({ success: false, message: "Invalid ID format or Server Error" });
     }
 };
