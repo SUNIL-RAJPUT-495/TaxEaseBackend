@@ -54,7 +54,16 @@ const userSchema = new mongoose.Schema({
             }, 
             uploadedAt: { type: Date, default: Date.now }
         }
-    ]
+    ],
+    filingStatus: {
+        type: String,
+        enum: ["pending", "uploaded", "approved", "rejected"],
+        default: "pending"
+    },
+    rejectionReason: {
+        type: String,
+        default: ""
+    }
     
 }, { timestamps: true });
 

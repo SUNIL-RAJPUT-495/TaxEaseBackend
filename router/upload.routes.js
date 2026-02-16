@@ -1,6 +1,6 @@
 import { Router } from "express";
 import upload from "../middleware/multer.js";
-import { adminUploadToUser, uploadSingleImage } from "../controller/uploadImage.controller.js";
+import { adminUploadToUser, getFileDecisionStatus, getMyDocuments, updateFileDecision, uploadSingleImage } from "../controller/uploadImage.controller.js";
 import { authToken } from "../middleware/authToken.js";
 
 const uploadRouter = Router();
@@ -18,15 +18,17 @@ uploadRouter.post(
   adminUploadToUser 
 );
 
+uploadRouter.get("/getMyDocuments",authToken,getMyDocuments)
 
-// uploadRouter.post(
-//   "/upload-product",
-//   upload.array("productImages", 5),
-//   uploadProductImages
-// );
+uploadRouter.post("/update-decision", authToken, updateFileDecision)
 
+// Admin ke liye (ID ke sath)
+uploadRouter.get("/get-user-decision/:userId", authToken, getFileDecisionStatus);
 
-export default uploadRouter;
+// User ke liye (Bina ID ke)
+uploadRouter.get("/get-user-decision", authToken, getFileDecisionStatus);
+
+export default uploadRouter;  
 
 
 
