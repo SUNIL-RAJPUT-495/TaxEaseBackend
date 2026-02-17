@@ -9,25 +9,24 @@ const getAdminId = async () => {
     return admin ? admin._id.toString() : null;
 };
 
-// --- 1. SEND MESSAGE (Real-time Fix) ---
+// --- 1. SEND MESSAGE 
 export const sendMessage = async (req, res) => {
     try {
         const { message, receiver } = req.body;
-        const senderId = req.userId; // Middleware se aaya
+        const senderId = req.userId; 
 
-        // 1. Admin ID fetch karo
         const ADMIN_ID = await getAdminId();
         if (!ADMIN_ID) {
             return res.status(500).json({ success: false, message: "System Error: Admin not found" });
         }
-
+    
         const isSenderAdmin = senderId.toString() === ADMIN_ID.toString();
+        
         let finalReceiverId = isSenderAdmin ? receiver : ADMIN_ID;
 
-        // "admin" keyword handle karo
         if (finalReceiverId === "admin") finalReceiverId = ADMIN_ID;
 
-        // 2. ID Validation
+        // Validation
         if (!finalReceiverId || !mongoose.Types.ObjectId.isValid(finalReceiverId)) {
             return res.status(400).json({ success: false, message: "Invalid Receiver ID" });
         }
@@ -35,20 +34,16 @@ export const sendMessage = async (req, res) => {
         const senderObjId = new mongoose.Types.ObjectId(senderId);
         const receiverObjId = new mongoose.Types.ObjectId(finalReceiverId);
 
-        
-        // Step A: Pehle dhoondo kya conversation exist karti hai?
         let conversation = await Conversation.findOne({
             participants: { $all: [senderObjId, receiverObjId] }
         });
 
-        // Step B: Agar nahi mili, toh nayi CREATE karo
         if (!conversation) {
             conversation = await Conversation.create({
                 participants: [senderObjId, receiverObjId]
             });
         }
 
-        // 3. Message Save karo
         const newMessage = await Message.create({
             conversationId: conversation._id,
             sender: senderObjId,
@@ -56,23 +51,32 @@ export const sendMessage = async (req, res) => {
             seen: false
         });
 
-        // 4. Last Message Update karo
         conversation.lastMessage = message.trim();
         await conversation.save();
 
-        // 5. Pusher Trigger
         const messageData = newMessage.toObject();
         messageData.sender = senderId;
         messageData.receiver = finalReceiverId;
 
-        const channelUserId = isSenderAdmin ? finalReceiverId : senderId;
-        
+
+        let targetChannelId;
+        if (isSenderAdmin) {
+            targetChannelId = finalReceiverId.toString(); 
+        } else {
+            targetChannelId = senderId.toString(); 
+        }
+
+        const channelName = `chat-${targetChannelId}`;
+
+        console.log(`📢 Backend sending to Pusher Channel: ${channelName}`);
+        console.log(`📨 Message Sender: ${isSenderAdmin ? 'Admin' : 'User'}`);
+
         try {
-            await pusher.trigger(`chat-${channelUserId}`, "new-message", {
+            await pusher.trigger(channelName, "new-message", {
                 message: messageData
             });
         } catch (err) {
-            console.log("Pusher Error (Ignored):", err.message);
+            console.log("⚠️ Pusher Error:", err.message);
         }
 
         res.status(200).json({ success: true, data: messageData });
