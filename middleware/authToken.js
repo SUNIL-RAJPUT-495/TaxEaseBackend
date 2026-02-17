@@ -1,4 +1,5 @@
 import jwt from 'jsonwebtoken';
+import { User } from '../modules/user.module.js';
 
 export const authToken = async (req, res, next) => {
     try {
@@ -13,7 +14,14 @@ export const authToken = async (req, res, next) => {
         }
 
         const decode = jwt.verify(token, process.env.JWT_SECRET);
-        console.log("Decoded Token Data:", decode);
+        const userExist = await User.findById(decode._id);
+        if (!userExist) {
+            res.clearCookie("token"); 
+            return res.status(401).json({ 
+                success: false, 
+                message: "Account no longer exists. Logging out..." 
+            });
+        }
 
         if (!decode) {
             return res.status(401).json({
