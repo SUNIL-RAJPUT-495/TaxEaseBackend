@@ -1,6 +1,6 @@
 import { Conversation, Message } from "../modules/chat.model.js";
 import { User } from "../modules/user.module.js";
-import {pusher} from "../utils/pusher.js"; // Ensure path is correct
+import {pusher} from "../utils/pusher.js"; 
 import mongoose from "mongoose"; 
 
 // Helper function to get Admin ID
@@ -13,35 +13,42 @@ const getAdminId = async () => {
 export const sendMessage = async (req, res) => {
     try {
         const { message, receiver } = req.body;
-        const senderId = req.userId.toString(); 
+        const senderId = req.userId; // Middleware se aaya
 
+        // 1. Admin ID fetch karo
         const ADMIN_ID = await getAdminId();
         if (!ADMIN_ID) {
             return res.status(500).json({ success: false, message: "System Error: Admin not found" });
         }
 
-        const isSenderAdmin = senderId === ADMIN_ID;
-
-        // Receiver decide karo
+        const isSenderAdmin = senderId.toString() === ADMIN_ID.toString();
         let finalReceiverId = isSenderAdmin ? receiver : ADMIN_ID;
+
+        // "admin" keyword handle karo
         if (finalReceiverId === "admin") finalReceiverId = ADMIN_ID;
 
-        // Validation
-        if (!mongoose.Types.ObjectId.isValid(finalReceiverId)) {
+        // 2. ID Validation
+        if (!finalReceiverId || !mongoose.Types.ObjectId.isValid(finalReceiverId)) {
             return res.status(400).json({ success: false, message: "Invalid Receiver ID" });
         }
 
         const senderObjId = new mongoose.Types.ObjectId(senderId);
         const receiverObjId = new mongoose.Types.ObjectId(finalReceiverId);
 
-        // Conversation setup
-        let conversation = await Conversation.findOneAndUpdate(
-            { participants: { $all: [senderObjId, receiverObjId] } },
-            { $setOnInsert: { participants: [senderObjId, receiverObjId] } },
-            { upsert: true, new: true }
-        );
+        
+        // Step A: Pehle dhoondo kya conversation exist karti hai?
+        let conversation = await Conversation.findOne({
+            participants: { $all: [senderObjId, receiverObjId] }
+        });
 
-        // Create Message
+        // Step B: Agar nahi mili, toh nayi CREATE karo
+        if (!conversation) {
+            conversation = await Conversation.create({
+                participants: [senderObjId, receiverObjId]
+            });
+        }
+
+        // 3. Message Save karo
         const newMessage = await Message.create({
             conversationId: conversation._id,
             sender: senderObjId,
@@ -49,22 +56,24 @@ export const sendMessage = async (req, res) => {
             seen: false
         });
 
+        // 4. Last Message Update karo
         conversation.lastMessage = message.trim();
         await conversation.save();
 
+        // 5. Pusher Trigger
         const messageData = newMessage.toObject();
-        messageData.sender = senderId;        
-        messageData.receiver = finalReceiverId; 
+        messageData.sender = senderId;
+        messageData.receiver = finalReceiverId;
 
-        // 🔥 DYNAMIC PUSHER LOGIC:
-        // Hamesha 'Customer' ki ID hi channel name hogi taaki Admin aur User dono sync rahein.
         const channelUserId = isSenderAdmin ? finalReceiverId : senderId;
-
-        console.log(`🚀 Real-time: Sending to chat-${channelUserId}`);
-
-        await pusher.trigger(`chat-${channelUserId}`, "new-message", { 
-            message: messageData 
-        });
+        
+        try {
+            await pusher.trigger(`chat-${channelUserId}`, "new-message", {
+                message: messageData
+            });
+        } catch (err) {
+            console.log("Pusher Error (Ignored):", err.message);
+        }
 
         res.status(200).json({ success: true, data: messageData });
 
@@ -73,7 +82,6 @@ export const sendMessage = async (req, res) => {
         res.status(500).json({ success: false, message: error.message });
     }
 };
-
 // --- 2. GET CHAT USERS (Admin Sidebar) ---
 export const getChatUsers = async (req, res) => {
     try {
