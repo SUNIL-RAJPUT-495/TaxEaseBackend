@@ -1,24 +1,61 @@
 import Razorpay from "razorpay";
-import crypto from "crypto"; 
-import { Order} from "../modules/Order.module.js"
-import {User} from "../modules/user.module.js"
+import crypto from "crypto";
+import { Order } from "../modules/Order.module.js"
+import { User } from "../modules/user.module.js"
 import dotenv from "dotenv";
+import console from "console";
 
 dotenv.config();
 
 const razorpay = new Razorpay({
-  key_id: process.env.RAZARPAY_API_KEY,      
-  key_secret: process.env.RAZARPAY_API_KEY_SECRET,
+    key_id: process.env.RAZARPAY_API_KEY,
+    key_secret: process.env.RAZARPAY_API_KEY_SECRET,
 });
 
 // --- 1. CREATE ORDER ---
 export const createOrder = async (req, res) => {
     try {
         const { amount, service, plan, name, email, phone, pan } = req.body;
-        const userId = req.userId; 
+        if (!amount || !service || !plan || !name || !email || !phone || !pan) {
+            return res.status(400).json({
+                success: false,
+                message: "All fields (Amount, Service, Plan, Name, Email, Phone, PAN) are required."
+            });
+        }
+
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid email format."
+            });
+        }
+
+        const cleanPhone = String(phone).replace(/\D/g, "");
+        if (cleanPhone.length !== 10) {
+            return res.status(400).json({
+                success: false,
+                message: "Phone number must be exactly 10 digits."
+            });
+        }
+        const panRegex = /^[A-Z]{5}[0-9]{4}[A-Z]{1}$/;
+        if (!panRegex.test(pan.toUpperCase())) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid PAN Card "
+            });
+        }
+
+        if (isNaN(amount) || amount <= 0) {
+            return res.status(400).json({
+                success: false,
+                message: "Amount must be a valid positive number."
+            });
+        }
+        const userId = req.userId;
 
         const options = {
-            amount: amount * 100, 
+            amount: amount * 100,
             currency: "INR",
             receipt: `receipt_${Date.now()}`,
         };
@@ -30,10 +67,10 @@ export const createOrder = async (req, res) => {
         }
 
         const newOrder = new Order({
-            userId: userId || null, 
+            userId: userId || null,
             name, email, phone, pan, service, plan, amount,
             orderId: razorpayOrder.id,
-            status: "created", 
+            status: "created",
             paymentId: ""
         });
 
@@ -50,7 +87,7 @@ export const createOrder = async (req, res) => {
         res.status(200).json({
             success: true,
             message: "Order Created",
-            order: savedOrder, 
+            order: savedOrder,
             key_id: process.env.RAZARPAY_API_KEY
         });
 
@@ -68,17 +105,17 @@ export const verifyPayment = async (req, res) => {
     try {
         const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
 
-       
+
         const order = await Order.findOne({ orderId: razorpay_order_id });
 
         if (!order) {
-            return res.status(404).json({ 
+            return res.status(404).json({
                 success: false,
-                 message: "Order not found"
-                 });
+                message: "Order not found"
+            });
         }
 
-        const secret = process.env.RAZARPAY_API_KEY_SECRET; 
+        const secret = process.env.RAZARPAY_API_KEY_SECRET;
 
         if (!secret) {
             return res.status(500).json({ message: "Server Config Error: Secret Key Missing" });
@@ -89,40 +126,53 @@ export const verifyPayment = async (req, res) => {
             .update(razorpay_order_id + "|" + razorpay_payment_id)
             .digest("hex");
 
-        
+
         if (generated_signature === razorpay_signature) {
-            
+
             order.paymentId = razorpay_payment_id;
-            order.status = "paid"; 
-            await order.save();
+            order.status = "paid";
+           await order.save();
+            let latestServiceId = null; 
+
             if (order.userId) {
                 const expiryDate = new Date();
                 expiryDate.setFullYear(expiryDate.getFullYear() + 1);
 
-                await User.findByIdAndUpdate(order.userId, {
-                    $set: { 
-                        activePlan: {
-                            serviceName: order.service,
-                            planName: order.plan,
-                            isActive: true,
-                            expiryDate: expiryDate
+                const updatedUser = await User.findByIdAndUpdate(
+                    order.userId, 
+                    {
+                        $push: { 
+                            activeServices: {
+                                serviceName: order.service,
+                                planName: order.plan,
+                                orderId: order._id,  
+                                status: "pending",   
+                                expiryDate: expiryDate
+                            }
                         }
-                    }
-                });
+                    },
+                    { new: true } 
+                );
+
+                if (updatedUser && updatedUser.activeServices.length > 0) {
+                    latestServiceId = updatedUser.activeServices[updatedUser.activeServices.length - 1]._id;
+                }
             }
 
-            return res.status(200).json({ 
-                success: true, 
-                message: "Payment Successful" 
+
+            return res.status(200).json({
+                success: true,
+                message: "Payment Successful",
+                activeServiceId: latestServiceId
             });
 
         } else {
             order.status = "failed";
-            await order.save(); 
-            
-            return res.status(400).json({ 
-                success: false, 
-                message: "Payment Verification Failed" 
+            await order.save();
+
+            return res.status(400).json({
+                success: false,
+                message: "Payment Verification Failed"
             });
         }
 
@@ -132,28 +182,26 @@ export const verifyPayment = async (req, res) => {
     }
 };
 
-
 export const getAllOrders = async (req, res) => {
     try {
         const orders = await Order.find()
-            .populate("userId", "name email phone documents") 
+            .populate("userId", "name email phone activeServices") 
             .sort({ createdAt: -1 });
 
-        res.status(200).json({ 
-            success: true, 
+        res.status(200).json({
+            success: true,
             message: "All Orders Fetched Successfully",
             data: orders
         });
 
     } catch (error) {
         console.error("Get All Orders Error:", error);
-        res.status(500).json({ 
-            success: false, 
+        res.status(500).json({
+            success: false,
             message: error.message || "Internal Server Error"
         });
     }
 };
-
 
 
 export const getOrderStats = async (req, res) => {
@@ -162,8 +210,8 @@ export const getOrderStats = async (req, res) => {
 
 
         const totalEarnings = await Order.aggregate([
-            { $match: { status: "paid" } }, 
-            { $group: { _id: null, total: { $sum: "$amount" } } } 
+            { $match: { status: "paid" } },
+            { $group: { _id: null, total: { $sum: "$amount" } } }
         ]);
 
         const failedOrdersCount = await Order.countDocuments({ status: "failed" });
@@ -173,7 +221,7 @@ export const getOrderStats = async (req, res) => {
             message: "Stats Fetched Successfully",
             data: {
                 totalOrders: completedOrdersCount,
-                totalRevenue: totalEarnings.length > 0 ? totalEarnings[0].total : 0, 
+                totalRevenue: totalEarnings.length > 0 ? totalEarnings[0].total : 0,
                 failedOrders: failedOrdersCount
             }
         });
@@ -196,9 +244,9 @@ export const recentOrders = async (req, res) => {
         console.log("Fetching recent orders...");
 
         const orders = await Order.find()
-            .sort({ createdAt: -1 }) 
-            .limit(5)             
-            .populate("userId", "name email"); 
+            .sort({ createdAt: -1 })
+            .limit(5)
+            .populate("userId", "name email");
 
         res.status(200).json({
             message: "Recent Orders Fetched Successfully",

@@ -1,5 +1,5 @@
 import { User } from "../modules/user.module.js";
-import bcrypt from "bcryptjs"; 
+import bcrypt from "bcryptjs";
 import { generateToken } from "../utils/generatedToken.js";
 import dotenv from "dotenv";
 import mongoose from 'mongoose';
@@ -11,22 +11,57 @@ dotenv.config();
 export const creatUser = async (req, res) => {
     try {
         const { name, email, phone, password, role } = req.body;
-        
+
         if (!name || !email || !phone || !password || !role) {
-            return res.status(400).json({ 
+            return res.status(400).json({
                 message: "All fields are required",
                 error: true,
                 success: false
             });
         }
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid email format."
+            });
+        }
 
-        const existingUser = await User.findOne({ email });
-        if (existingUser) {
-            return res.status(400).json({ 
-                message: "User with this email already exists",
+        if (!phone || String(phone).trim().length !== 10) {
+            return res.status(400).json({
+                message: "Phone number must be exactly 10 digits",
                 error: true,
                 success: false
             });
+        }
+
+        if (isNaN(phone)) {
+            return res.status(400).json({
+                message: "Phone number must contain only digits",
+                error: true,
+                success: false
+            });
+        }
+
+        const existingUser = await User.findOne({
+            $or: [{ email }, { phone }]
+        });
+
+        if (existingUser) {
+            if (existingUser.email === email) {
+                return res.status(400).json({
+                    message: "Email already exists",
+                    error: true,
+                    success: false
+                });
+            }
+            if (existingUser.phone === phone) {
+                return res.status(400).json({
+                    message: "Phone number already exists",
+                    error: true,
+                    success: false
+                });
+            }
         }
 
         const hashedPassword = await bcrypt.hash(password, 10);
@@ -34,10 +69,10 @@ export const creatUser = async (req, res) => {
         await newUser.save();
 
         res.status(201).json({
-             message: "User created successfully", 
-             user: newUser,
-             success: true,
-             error: false
+            message: "User created successfully",
+            user: newUser,
+            success: true,
+            error: false
         });
     } catch (error) {
         console.error("Error creating user:", error);
@@ -49,7 +84,7 @@ export const creatUser = async (req, res) => {
 export const verifyUser = async (req, res) => {
     try {
         const { email, password } = req.body;
-        
+
         const user = await User.findOne({ email });
         if (!user) return res.status(404).json({ message: "Invalid Credentials" });
 
@@ -72,7 +107,7 @@ export const verifyUser = async (req, res) => {
 // --- 3. USER DETAILS ---
 export const userDetails = async (req, res) => {
     try {
-        const currentUserId = req.userId; 
+        const currentUserId = req.userId;
         if (!mongoose.Types.ObjectId.isValid(currentUserId)) {
             return res.status(400).json({
                 message: "Invalid User Session. Please Login again.",
@@ -81,14 +116,14 @@ export const userDetails = async (req, res) => {
             });
         }
 
-       
+
 
         const user = await User.findById(currentUserId)
-            .select("-password") 
+            .select("-password")
             .populate({
                 path: 'orders',
-                strictPopulate: false 
-            }); 
+                strictPopulate: false
+            });
 
         if (!user) {
             return res.status(404).json({
@@ -107,7 +142,7 @@ export const userDetails = async (req, res) => {
 
     } catch (err) {
         console.error("Internal Server Error Details:", err);
-        
+
         return res.status(500).json({
             message: err.message || "Something went wrong on the server",
             error: true,
@@ -118,8 +153,8 @@ export const userDetails = async (req, res) => {
 
 
 // --- 4. GET ALL USER
-export const getAllUser =async(req,res)=>{
-    try{
+export const getAllUser = async (req, res) => {
+    try {
         const allUsers = await User.find().select("-password").sort({ createdAt: -1 });
 
         res.status(200).json({
@@ -142,7 +177,7 @@ export const getAllUser =async(req,res)=>{
 
 export const deleteUser = async (req, res) => {
     try {
-        const { userId } = req.body; 
+        const { userId } = req.body;
 
         if (!userId) {
             return res.status(400).json({

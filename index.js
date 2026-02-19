@@ -13,6 +13,7 @@ import planrouter from './router/plan.router.js';
 import orderRouter from './router/order.route.js';
 import uploadRouter from './router/upload.routes.js';
 import chatRouter from './router/chat.router.js';
+import documentsRouter from './router/documentsRouter.js';
 
 const app = express();
 
@@ -68,7 +69,8 @@ app.use("/api/user", userrouter);
 app.use("/api/plans", planrouter);
 app.use("/api/order", orderRouter);
 app.use("/api/file", uploadRouter);
-app.use("/api/chat",chatRouter)
+app.use("/api/chat",chatRouter);
+app.use("/api/document",documentsRouter)
 
 if (process.env.NODE_ENV !== 'production') {
     const PORT = process.env.PORT || 8080;
