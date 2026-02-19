@@ -123,7 +123,11 @@ export const userDetails = async (req, res) => {
             .populate({
                 path: 'orders',
                 strictPopulate: false
-            });
+            })
+            .populate({
+        path: 'activeServices', 
+        strictPopulate: false
+    });
 
         if (!user) {
             return res.status(404).json({
