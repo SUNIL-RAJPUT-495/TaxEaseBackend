@@ -1,5 +1,6 @@
 import uploadImageCloudinary from "../utils/uploadImageCloudnery.js";
 import { User } from "../modules/user.module.js";
+import { Plan } from "../modules/Plan.module.js";
 
 export const adminUploadToUser = async (req, res) => {
     try {
@@ -81,7 +82,6 @@ export const uploadSingleImage = async (req, res) => {
 };
 
 
-
 export const getMyDocuments = async (req, res) => {
     try {
         const userId = req.userId;
@@ -99,15 +99,26 @@ export const getMyDocuments = async (req, res) => {
 
         const sortedDocs = service.documents.sort((a, b) => b.uploadedAt - a.uploadedAt);
 
+        const planDetails = await Plan.findOne({
+            serviceCategory: service.serviceName, 
+            planName: service.planName
+        });
+
+        const requiredDocs = planDetails && planDetails.documents ? planDetails.documents : [];
+
         res.status(200).json({
             success: true,
-            data: sortedDocs 
+            data: {
+                uploadedDocuments: sortedDocs,
+                requiredDocuments: requiredDocs
+            }
         });
+
     } catch (error) {
+        console.error("Backend Error:", error);
         res.status(500).json({ success: false, message: error.message });
     }
 };
-
 
 
 

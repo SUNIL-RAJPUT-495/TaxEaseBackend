@@ -19,6 +19,7 @@ const planSchema = new mongoose.Schema({
     required: true
  },
   features: [{ type: String }], 
+  documents:[{type: String}],
   isPopular: {
      type: Boolean, 
      default: false 

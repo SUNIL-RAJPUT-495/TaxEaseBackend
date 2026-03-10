@@ -9,7 +9,8 @@ export const createPlan = async (req, res) => {
       price, 
       description, 
       features, 
-      isPopular 
+      isPopular ,
+      documents
     } = req.body;
 
     if (!serviceCategory || !planName || !price) {
@@ -23,6 +24,7 @@ export const createPlan = async (req, res) => {
       price: Number(price.replace(/,/g, '')), 
       description,
       features,
+      documents,
       isPopular
     });
 
@@ -105,7 +107,7 @@ export const getAllServices = async (req, res) => {
 
 export const editPlan = async (req, res) => {
   try {
-    const { id, planName, price, description, features, isPopular, isActive, serviceCategory } = req.body;
+    const { id, planName, price, description, features, isPopular, isActive, serviceCategory ,documents} = req.body;
 
     if (!id) {
         return res.status(400).json({
@@ -125,7 +127,7 @@ export const editPlan = async (req, res) => {
         features,
         isPopular,
         isActive,
-        serviceCategory
+        serviceCategory,documents
       },
       { new: true } 
     );
@@ -225,3 +227,4 @@ export const getPlanDetails = async (req, res) => {
         });
     }
 };
+

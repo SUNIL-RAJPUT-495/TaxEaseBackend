@@ -6,6 +6,8 @@ import morgan from 'morgan';
 import cors from 'cors';  
 import cookieParser from 'cookie-parser';
 import mongoose from "mongoose";
+import dns from 'node:dns';
+dns.setServers(["1.1.1.1","8.8.8.8"])
 
 // Routers
 import userrouter from './router/user.router.js';
@@ -14,6 +16,7 @@ import orderRouter from './router/order.route.js';
 import uploadRouter from './router/upload.routes.js';
 import chatRouter from './router/chat.router.js';
 import documentsRouter from './router/documentsRouter.js';
+import inquiryrouter from './router/inquiryRoutes.js';
 
 const app = express();
 
@@ -71,6 +74,7 @@ app.use("/api/order", orderRouter);
 app.use("/api/file", uploadRouter);
 app.use("/api/chat",chatRouter);
 app.use("/api/document",documentsRouter)
+app.use("/api/inquiry",inquiryrouter)
 
 if (process.env.NODE_ENV !== 'production') {
     const PORT = process.env.PORT || 8080;

@@ -1,19 +1,20 @@
-// models/DocRequirement.js
 import mongoose from "mongoose";
 
 const docRequirementSchema = new mongoose.Schema({
-    serviceId: { 
-        type: mongoose.Schema.Types.ObjectId, 
-        ref: 'Service',
-         required: true },
-    planId: { 
+    serviceId: {
         type: mongoose.Schema.Types.ObjectId,
-         ref: 'Plan',
-          required: true },
+        ref: 'Service',
+        required: true
+    },
+    planId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Plan',
+        required: true
+    },
     Documents: [
         {
-            docName: { type: String, required: true }, 
-            description: { type: String },          
+            docName: { type: String, required: true },
+            description: { type: String },
             isMandatory: { type: Boolean, default: true }
         }
     ]

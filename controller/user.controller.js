@@ -225,3 +225,8 @@ export const deleteUser = async (req, res) => {
         });
     }
 };
+
+
+export const Inquiries = async (req,res)=>{
+    
+}
