@@ -1,191 +1,229 @@
-import Razorpay from "razorpay";
-import crypto from "crypto";
 import { Order } from "../modules/Order.module.js"
 import { User } from "../modules/user.module.js"
 import dotenv from "dotenv";
-import console from "console";
+import axios from "axios";
 
 dotenv.config();
 
-const razorpay = new Razorpay({
-    key_id: process.env.RAZARPAY_API_KEY,
-    key_secret: process.env.RAZARPAY_API_KEY_SECRET,
-});
+const IMB_CREATE_ORDER_URL = `${process.env.IMB_BASE_URL}/api/create-order`;
 
-// --- 1. CREATE ORDER ---
 export const createOrder = async (req, res) => {
     try {
         const { amount, service, plan, name, email, phone, pan } = req.body;
-        if (!amount || !service || !plan || !name || !email || !phone || !pan) {
-            return res.status(400).json({
-                success: false,
-                message: "All fields (Amount, Service, Plan, Name, Email, Phone, PAN) are required."
-            });
-        }
+        const userId = req.userId;
 
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!emailRegex.test(email)) {
-            return res.status(400).json({
-                success: false,
-                message: "Invalid email format."
-            });
+        if (!amount || !service || !plan || !name || !email || !phone || !pan) {
+            return res.status(400).json({ success: false, message: "All fields are required." });
         }
 
         const cleanPhone = String(phone).replace(/\D/g, "");
-        if (cleanPhone.length !== 10) {
-            return res.status(400).json({
-                success: false,
-                message: "Phone number must be exactly 10 digits."
-            });
-        }
-        const panRegex = /^[A-Z]{5}[0-9]{4}[A-Z]{1}$/;
-        if (!panRegex.test(pan.toUpperCase())) {
-            return res.status(400).json({
-                success: false,
-                message: "Invalid PAN Card "
-            });
-        }
-
-        if (isNaN(amount) || amount <= 0) {
-            return res.status(400).json({
-                success: false,
-                message: "Amount must be a valid positive number."
-            });
-        }
-        const userId = req.userId;
-
-        const options = {
-            amount: amount * 100,
-            currency: "INR",
-            receipt: `receipt_${Date.now()}`,
-        };
-
-        const razorpayOrder = await razorpay.orders.create(options);
-
-        if (!razorpayOrder) {
-            return res.status(500).json({ message: "Razorpay Order Failed" });
-        }
+        const transactionId = "TXN" + Date.now() + Math.floor(Math.random() * 1000);
 
         const newOrder = new Order({
             userId: userId || null,
-            name, email, phone, pan, service, plan, amount,
-            orderId: razorpayOrder.id,
-            status: "created",
-            paymentId: ""
+            name, email, phone: cleanPhone, pan, service, plan, amount,
+            orderId: transactionId,
+            status: "created"
         });
-
         const savedOrder = await newOrder.save();
 
         if (userId) {
-            await User.findByIdAndUpdate(
-                userId,
-                { $push: { orders: savedOrder._id } },
-                { new: true }
-            );
+            await User.findByIdAndUpdate(userId, { $push: { orders: savedOrder._id } });
         }
 
-        res.status(200).json({
-            success: true,
-            message: "Order Created",
-            order: savedOrder,
-            key_id: process.env.RAZARPAY_API_KEY
+        const payload = new URLSearchParams({
+            customer_mobile: cleanPhone,
+            user_token: process.env.IMB_CLIENT_SECRET,
+            amount: String(amount),
+            order_id: transactionId,
+            customer_name: name,
+            remark1: email,
+            remark2: plan, 
+            redirect_url: `${process.env.FRONTEND_URL}/payment-status/${transactionId}`,
         });
 
+        console.log("Sending Payload to LIVE URL...");
+
+        const response = await axios.post(IMB_CREATE_ORDER_URL, payload.toString(), {
+            headers: {
+                "Content-Type": "application/x-www-form-urlencoded"
+            }
+        });
+
+        const data = response.data;
+        console.log("IMB Final Response:", data);
+
+        if (data && data.status === true && data.result) {
+            return res.status(200).json({
+                success: true,
+                message: "Order Created Successfully",
+                payment_url: data.result.payment_url || data.result.paytm_link || data.result.bhim_link || data.result.check_link,
+                orderId: transactionId
+            });
+        } else {
+            throw new Error(data.message || "Failed to generate payment link.");
+        }
+
     } catch (error) {
-        console.error("Create Order Error:", error);
-        res.status(500).json({ success: false, message: error.message });
+        console.error("IMB Create Order Error:", error.response?.data || error.message);
+        res.status(500).json({ success: false, message: "Payment initialization failed." });
     }
 };
 
-
-
-
-// --- 2. VERIFY PAYMENT ---
+// ==========================================
+// 2. VERIFY PAYMENT (Status Check via Frontend)
+// ==========================================
 export const verifyPayment = async (req, res) => {
     try {
-        const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
+        const { transactionId } = req.body;
 
+        if (!transactionId) {
+            return res.status(400).json({ success: false, message: "Transaction ID missing" });
+        }
 
-        const order = await Order.findOne({ orderId: razorpay_order_id });
-
+        const order = await Order.findOne({ orderId: transactionId });
         if (!order) {
-            return res.status(404).json({
-                success: false,
-                message: "Order not found"
+            return res.status(404).json({ success: false, message: "Order not found" });
+        }
+
+        const statusPayload = {
+            client_id: process.env.IMB_CLIENT_ID,
+            client_secret: process.env.IMB_CLIENT_SECRET,
+            merchant_code: process.env.IMB_MERCHANT_CODE,
+            client_txn_id: transactionId
+        };
+
+        const response = await axios.post(process.env.IMB_STATUS_URL, statusPayload);
+        const data = response.data;
+
+        if (data.status === "SUCCESS" || data.status === "COMPLETED") {
+            if (order.status !== "paid") {
+                order.paymentId = data.upi_txn_id || data.bank_txn_id || transactionId;
+                order.status = "paid";
+                await order.save();
+
+                let latestServiceId = null;
+
+                if (order.userId) {
+                    const expiryDate = new Date();
+                    expiryDate.setFullYear(expiryDate.getFullYear() + 1);
+
+                    const updatedUser = await User.findByIdAndUpdate(
+                        order.userId,
+                        {
+                            $push: {
+                                activeServices: {
+                                    serviceName: order.service,
+                                    planName: order.plan,
+                                    orderId: order._id,
+                                    status: "pending",
+                                    expiryDate: expiryDate
+                                }
+                            }
+                        },
+                        { new: true }
+                    );
+
+                    if (updatedUser && updatedUser.activeServices.length > 0) {
+                        latestServiceId = updatedUser.activeServices[updatedUser.activeServices.length - 1]._id;
+                    }
+                }
+
+                return res.status(200).json({
+                    success: true,
+                    message: "Payment Verified Successfully",
+                    activeServiceId: latestServiceId
+                });
+            } else {
+                return res.status(200).json({ success: true, message: "Already verified" });
+            }
+        } else if (data.status === "PENDING" || data.status === "PROCESSING") {
+            return res.status(200).json({ 
+                success: true, 
+                message: "Payment is currently pending/processing. Please check back shortly.",
+                status: "pending"
             });
+        } else {
+            order.status = "failed";
+            await order.save();
+            return res.status(400).json({ success: false, message: "Payment was not successful or failed." });
         }
 
-        const secret = process.env.RAZARPAY_API_KEY_SECRET;
+    } catch (error) {
+        console.error("Verify Error:", error.response?.data || error.message);
+        res.status(500).json({ success: false, message: "Internal Server Error during verification" });
+    }
+};
 
-        if (!secret) {
-            return res.status(500).json({ message: "Server Config Error: Secret Key Missing" });
+// ==========================================
+// 3. IMB WEBHOOK (Background Server-to-Server)
+// ==========================================
+export const imbWebhook = async (req, res) => {
+    try {
+        const data = req.body;
+        console.log("🔥 Webhook Received from IMB:", data);
+
+        const transactionId = data.client_txn_id || data.order_id;
+        
+        if (!transactionId) {
+            return res.status(400).send("Transaction ID missing");
         }
 
-        const generated_signature = crypto
-            .createHmac("sha256", secret)
-            .update(razorpay_order_id + "|" + razorpay_payment_id)
-            .digest("hex");
+        const order = await Order.findOne({ orderId: transactionId });
+        if (!order) {
+            return res.status(404).send("Order not found");
+        }
 
-
-        if (generated_signature === razorpay_signature) {
-
-            order.paymentId = razorpay_payment_id;
+        // Agar webhook SUCCESS bhejta hai aur order pehle se paid nahi hai
+        if ((data.status === "SUCCESS" || data.status === "COMPLETED") && order.status !== "paid") {
+            
+            order.paymentId = data.upi_txn_id || data.bank_txn_id || transactionId;
             order.status = "paid";
-           await order.save();
-            let latestServiceId = null; 
+            await order.save();
 
             if (order.userId) {
                 const expiryDate = new Date();
                 expiryDate.setFullYear(expiryDate.getFullYear() + 1);
 
-                const updatedUser = await User.findByIdAndUpdate(
-                    order.userId, 
+                await User.findByIdAndUpdate(
+                    order.userId,
                     {
-                        $push: { 
+                        $push: {
                             activeServices: {
                                 serviceName: order.service,
                                 planName: order.plan,
-                                orderId: order._id,  
-                                status: "pending",   
+                                orderId: order._id,
+                                status: "pending",
                                 expiryDate: expiryDate
                             }
                         }
-                    },
-                    { new: true } 
+                    }
                 );
-
-                if (updatedUser && updatedUser.activeServices.length > 0) {
-                    latestServiceId = updatedUser.activeServices[updatedUser.activeServices.length - 1]._id;
-                }
             }
-
-
-            return res.status(200).json({
-                success: true,
-                message: "Payment Successful",
-                activeServiceId: latestServiceId
-            });
-
-        } else {
+            console.log(`✅ Order ${transactionId} marked as PAID via Webhook!`);
+        } 
+        else if (data.status === "FAILED" && order.status !== "paid") {
             order.status = "failed";
             await order.save();
-
-            return res.status(400).json({
-                success: false,
-                message: "Payment Verification Failed"
-            });
+            console.log(`❌ Order ${transactionId} marked as FAILED via Webhook!`);
         }
 
+        // Webhook ko successful response (200) dena zaruri hai warna Gateway retry karta rahega
+        return res.status(200).send("Webhook Received Successfully");
+
     } catch (error) {
-        console.error("Verify Error:", error);
-        res.status(500).json({ success: false, message: "Internal Server Error" });
+        console.error("Webhook Error:", error);
+        return res.status(500).send("Webhook processing failed");
     }
 };
 
+// ==========================================
+// OTHER FUNCTIONS
+// ==========================================
 export const getAllOrders = async (req, res) => {
     try {
         const orders = await Order.find()
-            .populate("userId", "name email phone activeServices") 
+            .populate("userId", "name email phone documents")
             .sort({ createdAt: -1 });
 
         res.status(200).json({
@@ -193,7 +231,6 @@ export const getAllOrders = async (req, res) => {
             message: "All Orders Fetched Successfully",
             data: orders
         });
-
     } catch (error) {
         console.error("Get All Orders Error:", error);
         res.status(500).json({
@@ -203,11 +240,9 @@ export const getAllOrders = async (req, res) => {
     }
 };
 
-
 export const getOrderStats = async (req, res) => {
     try {
         const completedOrdersCount = await Order.countDocuments({ status: "paid" });
-
 
         const totalEarnings = await Order.aggregate([
             { $match: { status: "paid" } },
@@ -225,7 +260,6 @@ export const getOrderStats = async (req, res) => {
                 failedOrders: failedOrdersCount
             }
         });
-
     } catch (error) {
         console.error("Stats Error:", error);
         res.status(500).json({
@@ -235,14 +269,8 @@ export const getOrderStats = async (req, res) => {
     }
 };
 
-
-
-
-
 export const recentOrders = async (req, res) => {
     try {
-        console.log("Fetching recent orders...");
-
         const orders = await Order.find()
             .sort({ createdAt: -1 })
             .limit(5)
@@ -254,7 +282,6 @@ export const recentOrders = async (req, res) => {
             success: true,
             error: false
         });
-
     } catch (err) {
         console.error("Recent Orders Error:", err);
         res.status(500).json({
