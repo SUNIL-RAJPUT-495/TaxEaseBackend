@@ -7,6 +7,7 @@ dotenv.config();
 
 const IMB_CREATE_ORDER_URL = `${process.env.IMB_BASE_URL}/api/create-order`;
 
+
 export const createOrder = async (req, res) => {
     try {
         const { amount, service, plan, name, email, phone, pan } = req.body;
@@ -91,8 +92,9 @@ export const verifyPayment = async (req, res) => {
         }
 
         const statusPayload = {
-            client_secret: process.env.IMB_CLIENT_SECRET,
-            client_txn_id: transactionId
+
+            user_token: process.env.IMB_CLIENT_SECRET,
+            order_id: transactionId
         };
 
         const response = await axios.post(process.env.IMB_STATUS_URL, statusPayload);
