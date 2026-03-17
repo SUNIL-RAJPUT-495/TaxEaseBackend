@@ -13,7 +13,10 @@ export const createOrder = async (req, res) => {
         const userId = req.userId;
 
         if (!amount || !service || !plan || !name || !email || !phone || !pan) {
-            return res.status(400).json({ success: false, message: "All fields are required." });
+            return res.status(400).json({
+                success: false,
+                message: "All fields are required."
+            });
         }
 
         const cleanPhone = String(phone).replace(/\D/g, "");
@@ -38,9 +41,10 @@ export const createOrder = async (req, res) => {
             order_id: transactionId,
             customer_name: name,
             remark1: email,
-            remark2: plan, 
-            redirect_url: `${process.env.FRONTEND_URL}/payment-status/${transactionId}`,
+            remark2: plan,
+            redirect_url: `https://tax-ease-client.vercel.app/payment-status/${transactionId}`,
         });
+        console.log(payload.redirect_url)
 
         console.log("Sending Payload to LIVE URL...");
 
@@ -138,8 +142,8 @@ export const verifyPayment = async (req, res) => {
                 return res.status(200).json({ success: true, message: "Already verified" });
             }
         } else if (data.status === "PENDING" || data.status === "PROCESSING") {
-            return res.status(200).json({ 
-                success: true, 
+            return res.status(200).json({
+                success: true,
                 message: "Payment is currently pending/processing. Please check back shortly.",
                 status: "pending"
             });
@@ -164,7 +168,7 @@ export const imbWebhook = async (req, res) => {
         console.log("🔥 Webhook Received from IMB:", data);
 
         const transactionId = data.client_txn_id || data.order_id;
-        
+
         if (!transactionId) {
             return res.status(400).send("Transaction ID missing");
         }
@@ -176,7 +180,7 @@ export const imbWebhook = async (req, res) => {
 
         // Agar webhook SUCCESS bhejta hai aur order pehle se paid nahi hai
         if ((data.status === "SUCCESS" || data.status === "COMPLETED") && order.status !== "paid") {
-            
+
             order.paymentId = data.upi_txn_id || data.bank_txn_id || transactionId;
             order.status = "paid";
             await order.save();
@@ -201,14 +205,13 @@ export const imbWebhook = async (req, res) => {
                 );
             }
             console.log(`✅ Order ${transactionId} marked as PAID via Webhook!`);
-        } 
+        }
         else if (data.status === "FAILED" && order.status !== "paid") {
             order.status = "failed";
             await order.save();
             console.log(`❌ Order ${transactionId} marked as FAILED via Webhook!`);
         }
 
-        // Webhook ko successful response (200) dena zaruri hai warna Gateway retry karta rahega
         return res.status(200).send("Webhook Received Successfully");
 
     } catch (error) {
@@ -216,6 +219,18 @@ export const imbWebhook = async (req, res) => {
         return res.status(500).send("Webhook processing failed");
     }
 };
+
+
+
+
+
+
+
+
+
+
+
+
 
 // ==========================================
 // OTHER FUNCTIONS
