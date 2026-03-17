@@ -91,9 +91,7 @@ export const verifyPayment = async (req, res) => {
         }
 
         const statusPayload = {
-            client_id: process.env.IMB_CLIENT_ID,
             client_secret: process.env.IMB_CLIENT_SECRET,
-            merchant_code: process.env.IMB_MERCHANT_CODE,
             client_txn_id: transactionId
         };
 
